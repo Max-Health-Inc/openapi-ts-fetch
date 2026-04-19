@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "openapi-ts-fetch"
 version = "0.1.0"
 description = "Lightweight Python OpenAPI 3.x → TypeScript fetch client generator. Zero Java, zero npm."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Max Health Inc." }]
 keywords = ["openapi", "typescript", "fetch", "codegen", "api-client"]
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Code Generators",
     "Topic :: Internet :: WWW/HTTP",
 ]
@@ -32,8 +33,26 @@ Issues = "https://github.com/Max-Health-Inc/openapi-ts-fetch/issues"
 [project.scripts]
 openapi-ts-fetch = "generate:main"
 
-[tool.setuptools]
-py-modules = ["generate"]
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "ruff>=0.15",
+]
 
-[tool.setuptools.package-data]
-"*" = ["runtime-template.ts"]
+[tool.uv]
+required-version = ">=0.11"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+include = ["generate.py", "runtime-template.ts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]

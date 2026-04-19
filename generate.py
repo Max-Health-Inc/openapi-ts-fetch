@@ -29,7 +29,6 @@ Omit --tags to generate everything (original behaviour).
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from collections import defaultdict
@@ -38,64 +37,67 @@ from typing import Any
 
 # ─── Naming helpers ──────────────────────────────────────────────────────────────
 
+
 def pascal(name: str) -> str:
     """Convert a kebab/snake/camelCase string to PascalCase."""
-    parts = re.split(r'[-_\s]', name)
+    parts = re.split(r"[-_\s]", name)
     result_parts: list[str] = []
     for p in parts:
-        sub = re.sub(r'([a-z])([A-Z])', r'\1_\2', p).split('_')
+        sub = re.sub(r"([a-z])([A-Z])", r"\1_\2", p).split("_")
         for s in sub:
             if s:
                 result_parts.append(s[0].upper() + s[1:])
-    return ''.join(result_parts)
+    return "".join(result_parts)
 
 
 def camel(name: str) -> str:
     """Convert to camelCase."""
     p = pascal(name)
-    return p[0].lower() + p[1:] if p else ''
+    return p[0].lower() + p[1:] if p else ""
 
 
 def safe_id(name: str) -> str:
     """Make a string safe as a TypeScript identifier."""
-    name = re.sub(r'[^a-zA-Z0-9_$]', '_', name)
+    name = re.sub(r"[^a-zA-Z0-9_$]", "_", name)
     if name and name[0:1].isdigit():
-        name = '_' + name
+        name = "_" + name
     return name
 
 
 def operation_id(method: str, path: str, op: dict) -> str:
     """Get or generate an operationId, always returning a valid camelCase identifier."""
-    if 'operationId' in op:
+    if "operationId" in op:
         # Spec-provided operationIds may contain hyphens, wildcards (*), etc.
         # Replace * with 'All' for wildcard routes, strip remaining non-identifier chars,
         # then camelCase for a valid TS method name.
-        raw = op['operationId'].replace('*', 'All')
-        raw = re.sub(r'[^a-zA-Z0-9_-]', '', raw)
+        raw = op["operationId"].replace("*", "All")
+        raw = re.sub(r"[^a-zA-Z0-9_-]", "", raw)
         return camel(raw)
-    parts = path.strip('/').split('/')
+    parts = path.strip("/").split("/")
     cleaned = []
     for part in parts:
-        if part.startswith('{') and part.endswith('}'):
-            cleaned.append('By' + pascal(part[1:-1]))
+        if part.startswith("{") and part.endswith("}"):
+            cleaned.append("By" + pascal(part[1:-1]))
         else:
             cleaned.append(pascal(part))
-    return camel(method + ''.join(cleaned))
+    return camel(method + "".join(cleaned))
 
 
 # ─── OpenAPI 3.1 type normalization ──────────────────────────────────────────────
 
+
 def norm_type(schema: dict) -> tuple[str | None, bool]:
     """Normalize OpenAPI 3.1 type arrays like ["array", "null"]. Returns (type_str, nullable)."""
-    raw = schema.get('type')
+    raw = schema.get("type")
     if isinstance(raw, list):
-        non_null = [t for t in raw if t != 'null']
+        non_null = [t for t in raw if t != "null"]
         nullable = len(non_null) < len(raw)
-        return (non_null[0] if non_null else 'null'), nullable
-    return raw, schema.get('nullable', False) or raw == 'null'
+        return (non_null[0] if non_null else "null"), nullable
+    return raw, schema.get("nullable", False) or raw == "null"
 
 
 # ─── Schema registry with dedup & nested extraction ─────────────────────────────
+
 
 class SchemaRegistry:
     """
@@ -107,40 +109,44 @@ class SchemaRegistry:
 
     def __init__(self, spec: dict):
         self.spec = spec
-        self.models: dict[str, dict] = {}         # name -> schema
-        self._canon_map: dict[str, str] = {}      # canonical_hash -> name (dedup)
+        self.models: dict[str, dict] = {}  # name -> schema
+        self._canon_map: dict[str, str] = {}  # canonical_hash -> name (dedup)
         self._used_names: set[str] = set()
-        self._extracting: set[int] = set()        # cycle guard (schema id)
+        self._extracting: set[int] = set()  # cycle guard (schema id)
 
         # Pre-populate from components/schemas
-        for name, schema in (spec.get('components', {}).get('schemas', {}) or {}).items():
+        for name, schema in (spec.get("components", {}).get("schemas", {}) or {}).items():
             self._register_direct(name, schema)
 
     def _canonical(self, schema: dict) -> str:
         """Compute a canonical form of a schema for deduplication (ignores metadata)."""
+
         def _strip(obj: Any) -> Any:
             if isinstance(obj, dict):
-                return {k: _strip(v) for k, v in sorted(obj.items())
-                        if k not in ('title', 'description', 'example', 'examples',
-                                     'default', 'x-examples', 'externalDocs')}
+                return {
+                    k: _strip(v)
+                    for k, v in sorted(obj.items())
+                    if k not in ("title", "description", "example", "examples", "default", "x-examples", "externalDocs")
+                }
             if isinstance(obj, list):
                 return [_strip(x) for x in obj]
             return obj
-        return json.dumps(_strip(schema), sort_keys=True, separators=(',', ':'))
+
+        return json.dumps(_strip(schema), sort_keys=True, separators=(",", ":"))
 
     def _unique_name(self, base: str) -> str:
         if base not in self._used_names:
             self._used_names.add(base)
             return base
         n = 1
-        while f'{base}{n}' in self._used_names:
+        while f"{base}{n}" in self._used_names:
             n += 1
-        name = f'{base}{n}'
+        name = f"{base}{n}"
         self._used_names.add(name)
         return name
 
     def resolve_ref(self, ref: str) -> tuple[str, dict]:
-        parts = ref.lstrip('#/').split('/')
+        parts = ref.lstrip("#/").split("/")
         obj = self.spec
         for part in parts:
             obj = obj[part]
@@ -178,7 +184,7 @@ class SchemaRegistry:
             return self._canon_map[canon]
 
         # Determine name: title takes priority
-        title = schema.get('title')
+        title = schema.get("title")
         if title and isinstance(title, str):
             name = pascal(title)
         else:
@@ -200,7 +206,7 @@ class SchemaRegistry:
         self._extracting.add(sid)
 
         try:
-            props = schema.get('properties', {})
+            props = schema.get("properties", {})
             if not isinstance(props, dict):
                 return
 
@@ -213,134 +219,145 @@ class SchemaRegistry:
                 ptype, _ = norm_type(pschema)
 
                 # Object property with properties → extract as separate model
-                if ptype == 'object' and pschema.get('properties'):
+                if ptype == "object" and pschema.get("properties"):
                     self.register_schema(pschema, child_name)
 
                 # Array property with object items → extract with "Inner" suffix
-                elif ptype == 'array':
-                    items = pschema.get('items', {})
+                elif ptype == "array":
+                    items = pschema.get("items", {})
                     item_type, _ = norm_type(items) if isinstance(items, dict) else (None, False)
-                    if isinstance(items, dict) and item_type == 'object' and items.get('properties'):
-                        self.register_schema(items, child_name + 'Inner')
+                    if isinstance(items, dict) and item_type == "object" and items.get("properties"):
+                        self.register_schema(items, child_name + "Inner")
 
                 # anyOf/oneOf with embedded objects
-                for keyword in ('anyOf', 'oneOf'):
+                for keyword in ("anyOf", "oneOf"):
                     if keyword in pschema and isinstance(pschema[keyword], list):
                         for variant in pschema[keyword]:
-                            if isinstance(variant, dict) and variant.get('type') == 'object' and variant.get('properties'):
+                            if (
+                                isinstance(variant, dict)
+                                and variant.get("type") == "object"
+                                and variant.get("properties")
+                            ):
                                 self.register_schema(variant, child_name)
         finally:
             self._extracting.discard(sid)
 
-    def ts_type(self, schema: dict | None, context_name: str = '') -> str:
+    def ts_type(self, schema: dict | None, context_name: str = "") -> str:
         """
         Convert an OpenAPI schema to a TypeScript type string.
         Extracts inline object schemas as named models.
         """
         if schema is None:
-            return 'any'
+            return "any"
 
         # $ref
-        if '$ref' in schema:
-            name, _ = self.resolve_ref(schema['$ref'])
+        if "$ref" in schema:
+            name, _ = self.resolve_ref(schema["$ref"])
             return name
 
         # allOf
-        if 'allOf' in schema:
-            types = [self.ts_type(s, context_name) for s in schema['allOf']]
-            return ' & '.join(types) if types else 'any'
+        if "allOf" in schema:
+            types = [self.ts_type(s, context_name) for s in schema["allOf"]]
+            return " & ".join(types) if types else "any"
 
         # oneOf / anyOf (handle nullable unions)
-        for keyword in ('oneOf', 'anyOf'):
+        for keyword in ("oneOf", "anyOf"):
             if keyword in schema:
                 variants = schema[keyword]
-                non_null = [v for v in variants if v.get('type') != 'null']
-                has_null = len(non_null) < len(variants) or schema.get('nullable')
+                non_null = [v for v in variants if v.get("type") != "null"]
+                has_null = len(non_null) < len(variants) or schema.get("nullable")
                 types = [self.ts_type(v, context_name) for v in non_null]
-                ts = ' | '.join(types) if types else 'any'
+                ts = " | ".join(types) if types else "any"
                 if has_null:
-                    ts += ' | null'
+                    ts += " | null"
                 return ts
 
         schema_type, nullable = norm_type(schema)
 
         # Enum values
-        if 'enum' in schema:
-            ts = 'string'
-            return f'{ts} | null' if nullable else ts
+        if "enum" in schema:
+            ts = "string"
+            return f"{ts} | null" if nullable else ts
 
         # Object with properties → register as named model
-        if schema_type == 'object' and schema.get('properties'):
+        if schema_type == "object" and schema.get("properties"):
             name = self.register_schema(schema, context_name)
-            return f'{name} | null' if nullable else name
+            return f"{name} | null" if nullable else name
 
         # Array
-        if schema_type == 'array':
-            items = schema.get('items', {})
-            item_ctx = context_name + 'Inner' if context_name else 'Item'
+        if schema_type == "array":
+            items = schema.get("items", {})
+            item_ctx = context_name + "Inner" if context_name else "Item"
             item_type = self.ts_type(items, item_ctx)
-            ts = f'Array<{item_type}>'
-            return f'{ts} | null' if nullable else ts
+            ts = f"Array<{item_type}>"
+            return f"{ts} | null" if nullable else ts
 
         # Object without properties (generic/map)
-        if schema_type == 'object':
-            if 'additionalProperties' in schema and isinstance(schema['additionalProperties'], dict):
-                val = self.ts_type(schema['additionalProperties'], context_name + 'Value')
-                ts = f'{{ [key: string]: {val} }}'
+        if schema_type == "object":
+            if "additionalProperties" in schema and isinstance(schema["additionalProperties"], dict):
+                val = self.ts_type(schema["additionalProperties"], context_name + "Value")
+                ts = f"{{ [key: string]: {val} }}"
             else:
-                ts = 'object'
-            return f'{ts} | null' if nullable else ts
+                ts = "object"
+            return f"{ts} | null" if nullable else ts
 
         # Primitives
         type_map = {
-            'string': 'string', 'integer': 'number', 'number': 'number',
-            'boolean': 'boolean', 'null': 'null',
+            "string": "string",
+            "integer": "number",
+            "number": "number",
+            "boolean": "boolean",
+            "null": "null",
         }
         if schema_type in type_map:
             ts = type_map[schema_type]
-            return f'{ts} | null' if nullable else ts
+            return f"{ts} | null" if nullable else ts
 
-        return 'any'
+        return "any"
 
-    def response_schema(self, responses: dict, status_codes: tuple = ('200', '201', '202', '204')) -> tuple[str | None, dict | None]:
+    def response_schema(
+        self, responses: dict, status_codes: tuple = ("200", "201", "202", "204")
+    ) -> tuple[str | None, dict | None]:
         """Returns (status_code, schema) for the first matching JSON response."""
         for code in status_codes:
             resp = responses.get(code, {})
-            content = resp.get('content', {})
-            for mt in ('application/json', '*/*'):
+            content = resp.get("content", {})
+            for mt in ("application/json", "*/*"):
                 if mt in content:
-                    return code, content[mt].get('schema')
+                    return code, content[mt].get("schema")
         return None, None
 
     def request_schema(self, body: dict | None) -> dict | None:
         if not body:
             return None
-        content = body.get('content', {})
-        for mt in ('application/json', 'multipart/form-data', 'application/x-www-form-urlencoded'):
+        content = body.get("content", {})
+        for mt in ("application/json", "multipart/form-data", "application/x-www-form-urlencoded"):
             if mt in content:
-                return content[mt].get('schema')
+                return content[mt].get("schema")
         return None
 
 
 # ─── Dependency tracking ─────────────────────────────────────────────────────────
 
-def model_refs(ts_type: str, registry: SchemaRegistry, exclude: str = '') -> set[str]:
+
+def model_refs(ts_type: str, registry: SchemaRegistry, exclude: str = "") -> set[str]:
     """Find model names referenced in a TS type string."""
     refs: set[str] = set()
-    for word in re.findall(r'\b[A-Z][a-zA-Z0-9]+\b', ts_type):
-        if word in registry.models and word != exclude and word != 'Array':
+    for word in re.findall(r"\b[A-Z][a-zA-Z0-9]+\b", ts_type):
+        if word in registry.models and word != exclude and word != "Array":
             refs.add(word)
     return refs
 
 
 # ─── Model file generator ────────────────────────────────────────────────────────
 
+
 def gen_model(name: str, schema: dict, registry: SchemaRegistry, header: str) -> str:
     """Generate a complete model .ts file."""
-    lines: list[str] = [header.rstrip(), '']
+    lines: list[str] = [header.rstrip(), ""]
 
-    props = schema.get('properties', {})
-    required = set(schema.get('required', []))
+    props = schema.get("properties", {})
+    required = set(schema.get("required", []))
 
     # Resolve property types
     prop_types: dict[str, str] = {}
@@ -357,19 +374,19 @@ def gen_model(name: str, schema: dict, registry: SchemaRegistry, header: str) ->
     lines.append("import { mapValues } from '../runtime';")
     for imp in sorted(imports):
         lines.append(f"import type {{ {imp} }} from './{imp}';")
-        lines.append(f"import {{")
+        lines.append("import {")
         lines.append(f"    {imp}FromJSON,")
         lines.append(f"    {imp}FromJSONTyped,")
         lines.append(f"    {imp}ToJSON,")
         lines.append(f"    {imp}ToJSONTyped,")
         lines.append(f"}} from './{imp}';")
-    lines.append('')
+    lines.append("")
 
     # Pre-compute enum type names for properties that have enum values
     enum_type_map: dict[str, str] = {}
     for pname, pschema in props.items():
-        if 'enum' in pschema:
-            enum_type_map[pname] = f'{name}{pascal(pname)}Enum'
+        if "enum" in pschema:
+            enum_type_map[pname] = f"{name}{pascal(pname)}Enum"
 
     # Build camelCase property name mapping: original -> camel
     camel_names: dict[str, str] = {}
@@ -377,109 +394,113 @@ def gen_model(name: str, schema: dict, registry: SchemaRegistry, header: str) ->
         camel_names[pname] = camel(pname)
 
     # Interface — use camelCase property names (matches Java generator convention)
-    lines.append(f'/**')
-    if schema.get('description'):
-        lines.append(f' * {schema["description"]}')
-    lines.append(f' * @export')
-    lines.append(f' * @interface {name}')
-    lines.append(f' */')
-    lines.append(f'export interface {name} {{')
+    lines.append("/**")
+    if schema.get("description"):
+        lines.append(f" * {schema['description']}")
+    lines.append(" * @export")
+    lines.append(f" * @interface {name}")
+    lines.append(" */")
+    lines.append(f"export interface {name} {{")
     for pname, pschema in props.items():
-        desc = pschema.get('description', '')
-        opt = '?' if pname not in required else ''
+        desc = pschema.get("description", "")
+        opt = "?" if pname not in required else ""
         # Use enum type if enum values are declared, otherwise use resolved TS type
         ts = enum_type_map.get(pname, prop_types[pname])
         cn = camel_names[pname]
-        lines.append(f'    /**')
+        lines.append("    /**")
         if desc:
-            lines.append(f'     * {desc}')
-        lines.append(f'     * @type {{{ts}}}')
-        lines.append(f'     * @memberof {name}')
-        lines.append(f'     */')
-        lines.append(f'    {safe_id(cn)}{opt}: {ts};')
-    lines.append('}')
-    lines.append('')
+            lines.append(f"     * {desc}")
+        lines.append(f"     * @type {{{ts}}}")
+        lines.append(f"     * @memberof {name}")
+        lines.append("     */")
+        lines.append(f"    {safe_id(cn)}{opt}: {ts};")
+    lines.append("}")
+    lines.append("")
 
     # Enum constants for enum properties
     for pname, pschema in props.items():
-        if 'enum' in pschema:
-            enum_name = f'{name}{pascal(pname)}Enum'
-            lines.append(f'/**')
-            lines.append(f' * @export')
-            lines.append(f' */')
-            lines.append(f'export const {enum_name} = {{')
-            for val in pschema['enum']:
+        if "enum" in pschema:
+            enum_name = f"{name}{pascal(pname)}Enum"
+            lines.append("/**")
+            lines.append(" * @export")
+            lines.append(" */")
+            lines.append(f"export const {enum_name} = {{")
+            for val in pschema["enum"]:
                 key = safe_id(pascal(str(val)))
                 lines.append(f"    {key}: '{val}'," if isinstance(val, str) else f"    {key}: {json.dumps(val)},")
-            lines.append('} as const;')
-            lines.append(f'export type {enum_name} = typeof {enum_name}[keyof typeof {enum_name}];')
-            lines.append('')
+            lines.append("} as const;")
+            lines.append(f"export type {enum_name} = typeof {enum_name}[keyof typeof {enum_name}];")
+            lines.append("")
 
     # instanceOf — check camelCase property names
-    lines.append(f'/**')
-    lines.append(f' * Check if a given object implements the {name} interface.')
-    lines.append(f' */')
-    lines.append(f'export function instanceOf{name}(value: object): value is {name} {{')
+    lines.append("/**")
+    lines.append(f" * Check if a given object implements the {name} interface.")
+    lines.append(" */")
+    lines.append(f"export function instanceOf{name}(value: object): value is {name} {{")
     for p in required:
         cn = camel_names.get(p, p)
         lines.append(f"    if (!('{cn}' in value) || value['{cn}'] === undefined) return false;")
-    lines.append('    return true;')
-    lines.append('}')
-    lines.append('')
+    lines.append("    return true;")
+    lines.append("}")
+    lines.append("")
 
     # FromJSON — read json['original_name'], assign to camelCase key
-    lines.append(f'export function {name}FromJSON(json: any): {name} {{')
-    lines.append(f'    return {name}FromJSONTyped(json, false);')
-    lines.append('}')
-    lines.append('')
-    lines.append(f'export function {name}FromJSONTyped(json: any, ignoreDiscriminator: boolean): {name} {{')
-    lines.append(f'    if (json == null) {{')
-    lines.append(f'        return json;')
-    lines.append(f'    }}')
-    lines.append(f'    return {{')
-    lines.append(f'        ')
+    lines.append(f"export function {name}FromJSON(json: any): {name} {{")
+    lines.append(f"    return {name}FromJSONTyped(json, false);")
+    lines.append("}")
+    lines.append("")
+    lines.append(f"export function {name}FromJSONTyped(json: any, ignoreDiscriminator: boolean): {name} {{")
+    lines.append("    if (json == null) {")
+    lines.append("        return json;")
+    lines.append("    }")
+    lines.append("    return {")
+    lines.append("        ")
     for pname, pschema in props.items():
         cn = safe_id(camel_names[pname])
         is_required = pname in required
         lines.append(f"        '{cn}': {_from_json(pname, pschema, prop_types[pname], registry, name, is_required)},")
-    lines.append(f'    }};')
-    lines.append('}')
-    lines.append('')
+    lines.append("    };")
+    lines.append("}")
+    lines.append("")
 
     # ToJSON — read value['camelCaseName'], output to 'original_name' key
-    lines.append(f'export function {name}ToJSON(json: any): {name} {{')
-    lines.append(f'    return {name}ToJSONTyped(json, false);')
-    lines.append('}')
-    lines.append('')
-    lines.append(f'export function {name}ToJSONTyped(value?: {name} | null, ignoreDiscriminator: boolean = false): any {{')
-    lines.append(f'    if (value == null) {{')
-    lines.append(f'        return value;')
-    lines.append(f'    }}')
-    lines.append(f'')
-    lines.append(f'    return {{')
-    lines.append(f'        ')
+    lines.append(f"export function {name}ToJSON(json: any): {name} {{")
+    lines.append(f"    return {name}ToJSONTyped(json, false);")
+    lines.append("}")
+    lines.append("")
+    lines.append(
+        f"export function {name}ToJSONTyped(value?: {name} | null, ignoreDiscriminator: boolean = false): any {{"
+    )
+    lines.append("    if (value == null) {")
+    lines.append("        return value;")
+    lines.append("    }")
+    lines.append("")
+    lines.append("    return {")
+    lines.append("        ")
     for pname, pschema in props.items():
         cn = safe_id(camel_names[pname])
         lines.append(f"        '{pname}': {_to_json(pname, pschema, prop_types[pname], registry, name, cn)},")
-    lines.append(f'    }};')
-    lines.append('}')
-    lines.append('')
+    lines.append("    };")
+    lines.append("}")
+    lines.append("")
 
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def _resolve_model_type(schema: dict, ts_type: str, registry: SchemaRegistry) -> str | None:
     """Find the model name for a schema, if it resolves to one."""
-    if '$ref' in schema:
-        name, _ = registry.resolve_ref(schema['$ref'])
+    if "$ref" in schema:
+        name, _ = registry.resolve_ref(schema["$ref"])
         return name
-    clean = ts_type.replace(' | null', '').strip()
+    clean = ts_type.replace(" | null", "").strip()
     if clean in registry.models:
         return clean
     return None
 
 
-def _from_json(pname: str, schema: dict, ts_type: str, registry: SchemaRegistry, parent: str, is_required: bool = False) -> str:
+def _from_json(
+    pname: str, schema: dict, ts_type: str, registry: SchemaRegistry, parent: str, is_required: bool = False
+) -> str:
     """Generate FromJSON expression for a property.
 
     For required properties, don't wrap in null-check (avoids 'undefined is not assignable' errors).
@@ -492,13 +513,13 @@ def _from_json(pname: str, schema: dict, ts_type: str, registry: SchemaRegistry,
         return f"json['{pname}'] == null ? undefined : {model}FromJSON(json['{pname}'])"
 
     stype, _ = norm_type(schema)
-    if stype == 'array':
-        items = schema.get('items', {})
-        item_model = _resolve_model_type(items, '', registry)
+    if stype == "array":
+        items = schema.get("items", {})
+        item_model = _resolve_model_type(items, "", registry)
         if not item_model:
             # Check by canonical form
             itype, _ = norm_type(items) if isinstance(items, dict) else (None, False)
-            if isinstance(items, dict) and itype == 'object' and items.get('properties'):
+            if isinstance(items, dict) and itype == "object" and items.get("properties"):
                 canon = registry._canonical(items)
                 item_model = registry._canon_map.get(canon)
         if item_model:
@@ -511,7 +532,9 @@ def _from_json(pname: str, schema: dict, ts_type: str, registry: SchemaRegistry,
     return f"json['{pname}'] == null ? undefined : json['{pname}']"
 
 
-def _to_json(pname: str, schema: dict, ts_type: str, registry: SchemaRegistry, parent: str, camel_name: str = '') -> str:
+def _to_json(
+    pname: str, schema: dict, ts_type: str, registry: SchemaRegistry, parent: str, camel_name: str = ""
+) -> str:
     """Generate ToJSON expression for a property.
 
     Reads from value['camelCaseName'] and outputs to 'original_name'.
@@ -522,12 +545,12 @@ def _to_json(pname: str, schema: dict, ts_type: str, registry: SchemaRegistry, p
         return f"{model}ToJSON(value['{cn}'])"
 
     stype, _ = norm_type(schema)
-    if stype == 'array':
-        items = schema.get('items', {})
-        item_model = _resolve_model_type(items, '', registry)
+    if stype == "array":
+        items = schema.get("items", {})
+        item_model = _resolve_model_type(items, "", registry)
         if not item_model:
             itype, _ = norm_type(items) if isinstance(items, dict) else (None, False)
-            if isinstance(items, dict) and itype == 'object' and items.get('properties'):
+            if isinstance(items, dict) and itype == "object" and items.get("properties"):
                 canon = registry._canonical(items)
                 item_model = registry._canon_map.get(canon)
         if item_model:
@@ -538,201 +561,214 @@ def _to_json(pname: str, schema: dict, ts_type: str, registry: SchemaRegistry, p
 
 # ─── API class generator ─────────────────────────────────────────────────────────
 
+
 def _iface_name(oid: str, registry: SchemaRegistry) -> str:
     """Generate a unique request interface name that won't collide with model names."""
-    candidate = pascal(oid) + 'Request'
+    candidate = pascal(oid) + "Request"
     if candidate in registry.models:
-        return pascal(oid) + 'OperationRequest'
+        return pascal(oid) + "OperationRequest"
     return candidate
 
 
 def gen_api(tag: str, operations: list[dict], registry: SchemaRegistry, header: str) -> str:
     """Generate an API class file for a tag."""
-    class_name = pascal(tag) + 'Api'
-    lines: list[str] = [header.rstrip(), '', '']
+    class_name = pascal(tag) + "Api"
+    lines: list[str] = [header.rstrip(), "", ""]
     lines.append("import * as runtime from '../runtime';")
 
     all_refs: set[str] = set()
     for op in operations:
-        all_refs |= op.get('_refs', set())
+        all_refs |= op.get("_refs", set())
 
     if all_refs:
-        lines.append('import type {')
+        lines.append("import type {")
         for ref in sorted(all_refs):
-            lines.append(f'  {ref},')
+            lines.append(f"  {ref},")
         lines.append("} from '../models/index';")
-        lines.append('import {')
+        lines.append("import {")
         for ref in sorted(all_refs):
-            lines.append(f'    {ref}FromJSON,')
-            lines.append(f'    {ref}ToJSON,')
+            lines.append(f"    {ref}FromJSON,")
+            lines.append(f"    {ref}ToJSON,")
         lines.append("} from '../models/index';")
 
-    lines.append('')
+    lines.append("")
 
     # Request interfaces — use camelCase param names for TS convention
     for op in operations:
-        params = op.get('params', [])
+        params = op.get("params", [])
         if params:
-            iface = _iface_name(op['id'], registry)
-            lines.append(f'export interface {iface} {{')
+            iface = _iface_name(op["id"], registry)
+            lines.append(f"export interface {iface} {{")
             for p in params:
-                opt = '' if p['required'] else '?'
-                cn = camel(p['name'])
+                opt = "" if p["required"] else "?"
+                cn = camel(p["name"])
                 lines.append(f"    {safe_id(cn)}{opt}: {p['ts']};")
-            lines.append('}')
-            lines.append('')
+            lines.append("}")
+            lines.append("")
 
     # Class
-    lines.append(f'/**')
-    lines.append(f' * ')
-    lines.append(f' */')
-    lines.append(f'export class {class_name} extends runtime.BaseAPI {{')
-    lines.append('')
+    lines.append("/**")
+    lines.append(" * ")
+    lines.append(" */")
+    lines.append(f"export class {class_name} extends runtime.BaseAPI {{")
+    lines.append("")
 
     for op in operations:
         _gen_operation(lines, op, registry)
 
-    lines.append('}')
-    lines.append('')
-    return '\n'.join(lines)
+    lines.append("}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _gen_operation(lines: list[str], op: dict, registry: SchemaRegistry):
     """Generate raw + convenience methods for one operation."""
-    oid = op['id']
-    method = op['method'].upper()
-    path = op['path']
-    summary = op.get('summary', '')
-    desc = op.get('description', '')
-    params = op.get('params', [])
-    resp_type = op.get('resp_type', 'void')
-    resp_array = op.get('resp_array', False)
-    resp_item = op.get('resp_item')
+    oid = op["id"]
+    method = op["method"].upper()
+    path = op["path"]
+    summary = op.get("summary", "")
+    desc = op.get("description", "")
+    params = op.get("params", [])
+    resp_type = op.get("resp_type", "void")
+    resp_array = op.get("resp_array", False)
+    resp_item = op.get("resp_item")
 
     has_params = bool(params)
-    has_required_params = any(p['required'] for p in params)
+    has_required_params = any(p["required"] for p in params)
     iface = _iface_name(oid, registry) if has_params else None
 
     # ── Raw method ──
-    lines.append('    /**')
+    lines.append("    /**")
     if desc:
-        lines.append(f'     * {desc}')
+        lines.append(f"     * {desc}")
     if summary:
-        lines.append(f'     * {summary}')
-    lines.append('     */')
+        lines.append(f"     * {summary}")
+    lines.append("     */")
     if has_params:
-        opt_mark = '' if has_required_params else '?'
-        sig = f'requestParameters{opt_mark}: {iface}, '
+        opt_mark = "" if has_required_params else "?"
+        sig = f"requestParameters{opt_mark}: {iface}, "
     else:
-        sig = ''
-    lines.append(f'    async {oid}Raw({sig}initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{resp_type}>> {{')
+        sig = ""
+    lines.append(
+        f"    async {oid}Raw({sig}initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{resp_type}>> {{"
+    )
 
     # Guard for optional requestParameters
     if has_params and not has_required_params:
-        lines.append(f'        requestParameters = requestParameters || {{}};')
-        lines.append('')
+        lines.append("        requestParameters = requestParameters || {};")
+        lines.append("")
 
     for p in params:
-        if p['required']:
-            cn = safe_id(camel(p['name']))
+        if p["required"]:
+            cn = safe_id(camel(p["name"]))
             lines.append(f"        if (requestParameters['{cn}'] == null) {{")
-            lines.append(f'            throw new runtime.RequiredError(')
+            lines.append("            throw new runtime.RequiredError(")
             lines.append(f"                '{cn}',")
             lines.append(f"                'Required parameter \"{cn}\" was null or undefined when calling {oid}().'")
-            lines.append(f'            );')
-            lines.append(f'        }}')
-            lines.append('')
+            lines.append("            );")
+            lines.append("        }")
+            lines.append("")
 
-    lines.append('        const queryParameters: any = {};')
+    lines.append("        const queryParameters: any = {};")
     for p in params:
-        if p['in'] == 'query':
-            cn = safe_id(camel(p['name']))
+        if p["in"] == "query":
+            cn = safe_id(camel(p["name"]))
             lines.append(f"        if (requestParameters['{cn}'] != null) {{")
             lines.append(f"            queryParameters['{p['name']}'] = requestParameters['{cn}'];")
-            lines.append(f'        }}')
-    lines.append('')
+            lines.append("        }")
+    lines.append("")
 
-    lines.append('        const headerParameters: runtime.HTTPHeaders = {};')
+    lines.append("        const headerParameters: runtime.HTTPHeaders = {};")
     for p in params:
-        if p['in'] == 'header':
-            cn = safe_id(camel(p['name']))
+        if p["in"] == "header":
+            cn = safe_id(camel(p["name"]))
             lines.append(f"        if (requestParameters['{cn}'] != null) {{")
             lines.append(f"            headerParameters['{p['name']}'] = String(requestParameters['{cn}']);")
-            lines.append(f'        }}')
-    lines.append('')
+            lines.append("        }")
+    lines.append("")
 
     # Auth
-    lines.append('        if (this.configuration && this.configuration.accessToken) {')
-    lines.append('            const token = this.configuration.accessToken;')
+    lines.append("        if (this.configuration && this.configuration.accessToken) {")
+    lines.append("            const token = this.configuration.accessToken;")
     lines.append('            const tokenString = await token("BearerAuth", []);')
-    lines.append('')
-    lines.append('            if (tokenString) {')
+    lines.append("")
+    lines.append("            if (tokenString) {")
     lines.append('                headerParameters["Authorization"] = `Bearer ${tokenString}`;')
-    lines.append('            }')
-    lines.append('        }')
-    lines.append('')
+    lines.append("            }")
+    lines.append("        }")
+    lines.append("")
 
     lines.append(f"        let urlPath = `{path}`;")
     for p in params:
-        if p['in'] == 'path':
-            cn = safe_id(camel(p['name']))
-            lines.append(f'        urlPath = urlPath.replace(`{{{p["name"]}}}`, encodeURIComponent(String(requestParameters[\'{cn}\'])));')
-    lines.append('')
+        if p["in"] == "path":
+            cn = safe_id(camel(p["name"]))
+            lines.append(
+                f"        urlPath = urlPath.replace(`{{{p['name']}}}`, encodeURIComponent(String(requestParameters['{cn}'])));"
+            )
+    lines.append("")
 
-    body_param = next((p for p in params if p['in'] == 'body'), None)
+    body_param = next((p for p in params if p["in"] == "body"), None)
     if body_param:
         lines.append("        headerParameters['Content-Type'] = 'application/json';")
-        lines.append('')
+        lines.append("")
 
-    lines.append('        const response = await this.request({')
-    lines.append('            path: urlPath,')
+    lines.append("        const response = await this.request({")
+    lines.append("            path: urlPath,")
     lines.append(f"            method: '{method}',")
-    lines.append('            headers: headerParameters,')
-    lines.append('            query: queryParameters,')
+    lines.append("            headers: headerParameters,")
+    lines.append("            query: queryParameters,")
     if body_param:
-        bn = safe_id(camel(body_param['name']))
-        bt = body_param['ts']
+        bn = safe_id(camel(body_param["name"]))
+        bt = body_param["ts"]
         if bt in registry.models:
             lines.append(f"            body: {bt}ToJSON(requestParameters['{bn}']),")
         else:
             lines.append(f"            body: requestParameters['{bn}'],")
-    lines.append('        }, initOverrides);')
-    lines.append('')
+    lines.append("        }, initOverrides);")
+    lines.append("")
 
-    if resp_type == 'void':
-        lines.append('        return new runtime.VoidApiResponse(response);')
+    if resp_type == "void":
+        lines.append("        return new runtime.VoidApiResponse(response);")
     elif resp_array and resp_item and resp_item in registry.models:
-        lines.append(f'        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map({resp_item}FromJSON));')
+        lines.append(
+            f"        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map({resp_item}FromJSON));"
+        )
     elif resp_type in registry.models:
-        lines.append(f'        return new runtime.JSONApiResponse(response, (jsonValue) => {resp_type}FromJSON(jsonValue));')
+        lines.append(
+            f"        return new runtime.JSONApiResponse(response, (jsonValue) => {resp_type}FromJSON(jsonValue));"
+        )
     else:
-        lines.append(f'        return new runtime.JSONApiResponse<{resp_type}>(response);')
+        lines.append(f"        return new runtime.JSONApiResponse<{resp_type}>(response);")
 
-    lines.append('    }')
-    lines.append('')
+    lines.append("    }")
+    lines.append("")
 
     # ── Convenience method ──
-    lines.append('    /**')
+    lines.append("    /**")
     if desc:
-        lines.append(f'     * {desc}')
+        lines.append(f"     * {desc}")
     if summary:
-        lines.append(f'     * {summary}')
-    lines.append('     */')
+        lines.append(f"     * {summary}")
+    lines.append("     */")
     if has_params:
-        opt_mark = '' if has_required_params else '?'
-        lines.append(f'    async {oid}(requestParameters{opt_mark}: {iface}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{resp_type}> {{')
-        lines.append(f'        const response = await this.{oid}Raw(requestParameters, initOverrides);')
+        opt_mark = "" if has_required_params else "?"
+        lines.append(
+            f"    async {oid}(requestParameters{opt_mark}: {iface}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{resp_type}> {{"
+        )
+        lines.append(f"        const response = await this.{oid}Raw(requestParameters, initOverrides);")
     else:
-        lines.append(f'    async {oid}(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{resp_type}> {{')
-        lines.append(f'        const response = await this.{oid}Raw(initOverrides);')
-    lines.append('        return await response.value();')
-    lines.append('    }')
-    lines.append('')
+        lines.append(
+            f"    async {oid}(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{resp_type}> {{"
+        )
+        lines.append(f"        const response = await this.{oid}Raw(initOverrides);")
+    lines.append("        return await response.value();")
+    lines.append("    }")
+    lines.append("")
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────────
 
-HEADER_TPL = '''/* tslint:disable */
+HEADER_TPL = """/* tslint:disable */
 /* eslint-disable */
 /**
  * {title}
@@ -743,7 +779,7 @@ HEADER_TPL = '''/* tslint:disable */
  * NOTE: This class is auto generated by generate-ts-fetch-client.py
  * Do not edit the class manually.
  */
-'''
+"""
 
 
 def _collect_model_deps(name: str, registry: SchemaRegistry, visited: set[str] | None = None) -> set[str]:
@@ -754,11 +790,11 @@ def _collect_model_deps(name: str, registry: SchemaRegistry, visited: set[str] |
         return visited
     visited.add(name)
     schema = registry.models[name]
-    props = schema.get('properties', {})
+    props = schema.get("properties", {})
     if not isinstance(props, dict):
         return visited
     for pschema in props.values():
-        ts = registry.ts_type(pschema, '')
+        ts = registry.ts_type(pschema, "")
         for dep in model_refs(ts, registry, name):
             _collect_model_deps(dep, registry, visited)
     return visited
@@ -771,18 +807,19 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
     is in the set are generated.  Models are pruned to those transitively
     referenced by the selected APIs.
     """
-    with open(spec_path, 'r', encoding='utf-8') as f:
-        if spec_path.endswith(('.yaml', '.yml')):
+    with open(spec_path, encoding="utf-8") as f:
+        if spec_path.endswith((".yaml", ".yml")):
             import yaml
+
             spec = yaml.safe_load(f)
         else:
             spec = json.load(f)
 
-    info = spec.get('info', {})
-    title = info.get('title', 'API')
-    description = info.get('description', '')
-    version = info.get('version', '0.0.0')
-    base_path = ''  # always empty — callers pass basePath via Configuration
+    info = spec.get("info", {})
+    title = info.get("title", "API")
+    description = info.get("description", "")
+    version = info.get("version", "0.0.0")
+    base_path = ""  # always empty — callers pass basePath via Configuration
 
     header = HEADER_TPL.format(title=title, description=description, version=version)
     registry = SchemaRegistry(spec)
@@ -790,15 +827,15 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
     # ── Phase 1: Walk all operations, extract schemas ────────────────────────
     tag_ops: dict[str, list[dict]] = defaultdict(list)
 
-    for path, path_item in (spec.get('paths', {}) or {}).items():
+    for path, path_item in (spec.get("paths", {}) or {}).items():
         if not isinstance(path_item, dict):
             continue
-        for method in ('get', 'post', 'put', 'patch', 'delete', 'head', 'options'):
+        for method in ("get", "post", "put", "patch", "delete", "head", "options"):
             op = path_item.get(method)
             if not op or not isinstance(op, dict):
                 continue
 
-            tags = op.get('tags', ['Default'])
+            tags = op.get("tags", ["Default"])
             oid = operation_id(method, path, op)
             op_pascal = pascal(oid)
 
@@ -806,74 +843,78 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
             params: list[dict] = []
             refs: set[str] = set()
 
-            raw_params = list(path_item.get('parameters', [])) + list(op.get('parameters', []))
+            raw_params = list(path_item.get("parameters", [])) + list(op.get("parameters", []))
             for p in raw_params:
-                if '$ref' in p:
-                    _, p = registry.resolve_ref(p['$ref'])
-                p_schema = p.get('schema', {})
-                ts = registry.ts_type(p_schema, op_pascal + pascal(p.get('name', '')))
+                if "$ref" in p:
+                    _, p = registry.resolve_ref(p["$ref"])
+                p_schema = p.get("schema", {})
+                ts = registry.ts_type(p_schema, op_pascal + pascal(p.get("name", "")))
                 refs |= model_refs(ts, registry)
-                params.append({
-                    'name': p.get('name', ''),
-                    'in': p.get('in', 'query'),
-                    'required': p.get('required', False),
-                    'ts': ts,
-                })
+                params.append(
+                    {
+                        "name": p.get("name", ""),
+                        "in": p.get("in", "query"),
+                        "required": p.get("required", False),
+                        "ts": ts,
+                    }
+                )
 
             # Request body
-            req_schema = registry.request_schema(op.get('requestBody'))
+            req_schema = registry.request_schema(op.get("requestBody"))
             if req_schema:
-                ctx = req_schema.get('title')
+                ctx = req_schema.get("title")
                 if ctx and isinstance(ctx, str):
                     ctx = pascal(ctx)
                 else:
-                    ctx = op_pascal + 'Request'
+                    ctx = op_pascal + "Request"
                 ts = registry.ts_type(req_schema, ctx)
                 refs |= model_refs(ts, registry)
-                body_name = camel(ts.replace(' | null', '').strip()) if ts[0:1].isupper() else 'body'
-                params.append({
-                    'name': body_name,
-                    'in': 'body',
-                    'required': True,
-                    'ts': ts,
-                })
+                body_name = camel(ts.replace(" | null", "").strip()) if ts[0:1].isupper() else "body"
+                params.append(
+                    {
+                        "name": body_name,
+                        "in": "body",
+                        "required": True,
+                        "ts": ts,
+                    }
+                )
 
             # Response
-            resp_code, resp_schema = registry.response_schema(op.get('responses', {}))
-            resp_type = 'void'
+            resp_code, resp_schema = registry.response_schema(op.get("responses", {}))
+            resp_type = "void"
             resp_array = False
             resp_item = None
             if resp_schema:
-                ctx = resp_schema.get('title')
+                ctx = resp_schema.get("title")
                 if ctx and isinstance(ctx, str):
                     ctx = pascal(ctx)
                 else:
                     # Match Java convention: OperationId + StatusCode + Response
-                    ctx = f'{op_pascal}{resp_code or ""}Response'
+                    ctx = f"{op_pascal}{resp_code or ''}Response"
                 resp_type = registry.ts_type(resp_schema, ctx)
                 refs |= model_refs(resp_type, registry)
                 resp_type_str, _ = norm_type(resp_schema)
-                if resp_type_str == 'array':
+                if resp_type_str == "array":
                     resp_array = True
-                    items = resp_schema.get('items', {})
-                    item_ctx = items.get('title') if isinstance(items.get('title'), str) else None
+                    items = resp_schema.get("items", {})
+                    item_ctx = items.get("title") if isinstance(items.get("title"), str) else None
                     if item_ctx:
                         item_ctx = pascal(item_ctx)
                     else:
-                        item_ctx = f'{op_pascal}{resp_code or ""}ResponseItem'
+                        item_ctx = f"{op_pascal}{resp_code or ''}ResponseItem"
                     resp_item = registry.ts_type(items, item_ctx)
 
             op_data = {
-                'id': oid,
-                'method': method,
-                'path': path,
-                'summary': op.get('summary', ''),
-                'description': op.get('description', ''),
-                'params': params,
-                'resp_type': resp_type,
-                'resp_array': resp_array,
-                'resp_item': resp_item,
-                '_refs': refs,
+                "id": oid,
+                "method": method,
+                "path": path,
+                "summary": op.get("summary", ""),
+                "description": op.get("description", ""),
+                "params": params,
+                "resp_type": resp_type,
+                "resp_array": resp_array,
+                "resp_item": resp_item,
+                "_refs": refs,
             }
             # Assign to first tag only (like Java generator) to avoid
             # duplicate request interface exports across API classes.
@@ -888,13 +929,13 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
                 filtered[tag] = ops
         skipped = set(tag_ops) - set(filtered)
         if skipped:
-            print(f'   [skip] tags not selected: {", ".join(sorted(skipped))}')
+            print(f"   [skip] tags not selected: {', '.join(sorted(skipped))}")
         tag_ops = filtered
 
     # ── Phase 2: Generate files ──────────────────────────────────────────────
     out = Path(output_dir)
-    models_dir = out / 'models'
-    apis_dir = out / 'apis'
+    models_dir = out / "models"
+    apis_dir = out / "apis"
     models_dir.mkdir(parents=True, exist_ok=True)
     apis_dir.mkdir(parents=True, exist_ok=True)
 
@@ -903,7 +944,7 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
         needed_models: set[str] = set()
         for ops in tag_ops.values():
             for op in ops:
-                needed_models |= op.get('_refs', set())
+                needed_models |= op.get("_refs", set())
         # Transitively expand dependencies
         all_needed: set[str] = set()
         for m in needed_models:
@@ -914,65 +955,65 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
     # Models
     model_files: list[str] = []
     for name, schema in sorted(registry.models.items()):
-        if not schema.get('properties'):
+        if not schema.get("properties"):
             continue
         if name not in all_needed:
             continue
         content = gen_model(name, schema, registry, header)
-        (models_dir / f'{name}.ts').write_text(content, encoding='utf-8')
+        (models_dir / f"{name}.ts").write_text(content, encoding="utf-8")
         model_files.append(name)
-        print(f'   [ok] models/{name}.ts')
+        print(f"   [ok] models/{name}.ts")
 
     # Models index
-    idx = '/* tslint:disable */\n/* eslint-disable */\n'
+    idx = "/* tslint:disable */\n/* eslint-disable */\n"
     for n in sorted(model_files):
         idx += f"export * from './{n}';\n"
-    (models_dir / 'index.ts').write_text(idx, encoding='utf-8')
+    (models_dir / "index.ts").write_text(idx, encoding="utf-8")
 
     # APIs
     api_files: list[str] = []
     total_ops = 0
     for tag, ops in sorted(tag_ops.items()):
-        cls = pascal(tag) + 'Api'
+        cls = pascal(tag) + "Api"
         content = gen_api(tag, ops, registry, header)
-        (apis_dir / f'{cls}.ts').write_text(content, encoding='utf-8')
+        (apis_dir / f"{cls}.ts").write_text(content, encoding="utf-8")
         api_files.append(cls)
         total_ops += len(ops)
-        print(f'   [ok] apis/{cls}.ts ({len(ops)} operations)')
+        print(f"   [ok] apis/{cls}.ts ({len(ops)} operations)")
 
     # APIs index
-    idx = '/* tslint:disable */\n/* eslint-disable */\n'
+    idx = "/* tslint:disable */\n/* eslint-disable */\n"
     for n in sorted(api_files):
         idx += f"export * from './{n}';\n"
-    (apis_dir / 'index.ts').write_text(idx, encoding='utf-8')
+    (apis_dir / "index.ts").write_text(idx, encoding="utf-8")
 
     # runtime.ts — copy from template, update BASE_PATH + version
-    runtime_path = out / 'runtime.ts'
-    template_path = Path(__file__).parent / 'runtime-template.ts'
+    runtime_path = out / "runtime.ts"
+    template_path = Path(__file__).parent / "runtime-template.ts"
     if template_path.exists():
-        rt = template_path.read_text(encoding='utf-8')
+        rt = template_path.read_text(encoding="utf-8")
     elif runtime_path.exists():
-        rt = runtime_path.read_text(encoding='utf-8')
+        rt = runtime_path.read_text(encoding="utf-8")
     else:
-        print(f'   [ERROR] runtime-template.ts not found next to generator and runtime.ts not found in output!')
+        print("   [ERROR] runtime-template.ts not found next to generator and runtime.ts not found in output!")
         sys.exit(1)
     rt = re.sub(r'export const BASE_PATH = "[^"]*"', f'export const BASE_PATH = "{base_path}"', rt)
-    rt = re.sub(r'The version of the OpenAPI document: [^\n]*', f'The version of the OpenAPI document: {version}', rt)
+    rt = re.sub(r"The version of the OpenAPI document: [^\n]*", f"The version of the OpenAPI document: {version}", rt)
     rt = re.sub(
-        r'NOTE: This class is auto generated by OpenAPI Generator.*\n.*openapi-generator\.tech\n.*Do not edit the class manually\.',
-        'NOTE: This class is auto generated by generate-ts-fetch-client.py\n * Do not edit the class manually.',
-        rt
+        r"NOTE: This class is auto generated by OpenAPI Generator.*\n.*openapi-generator\.tech\n.*Do not edit the class manually\.",
+        "NOTE: This class is auto generated by generate-ts-fetch-client.py\n * Do not edit the class manually.",
+        rt,
     )
-    runtime_path.write_text(rt, encoding='utf-8')
-    print(f'   [ok] runtime.ts ({"created" if not runtime_path.exists() else "updated"})')
+    runtime_path.write_text(rt, encoding="utf-8")
+    print(f"   [ok] runtime.ts ({'created' if not runtime_path.exists() else 'updated'})")
 
     # Top-level index.ts
-    (out / 'index.ts').write_text(
+    (out / "index.ts").write_text(
         "/* tslint:disable */\n/* eslint-disable */\nexport * from './runtime';\nexport * from './apis/index';\nexport * from './models/index';\n",
-        encoding='utf-8'
+        encoding="utf-8",
     )
 
-    print(f'\n[ok] Generated {len(model_files)} models, {len(api_files)} API classes, {total_ops} operations')
+    print(f"\n[ok] Generated {len(model_files)} models, {len(api_files)} API classes, {total_ops} operations")
     return model_files, api_files
 
 
@@ -982,20 +1023,20 @@ def main():
     tag_filter: set[str] | None = None
 
     # Parse --tags flag
-    if '--tags' in args:
-        idx = args.index('--tags')
+    if "--tags" in args:
+        idx = args.index("--tags")
         if idx + 1 >= len(args):
-            print('Error: --tags requires a comma-separated list of tag names')
+            print("Error: --tags requires a comma-separated list of tag names")
             sys.exit(1)
-        tag_filter = {t.strip() for t in args[idx + 1].split(',') if t.strip()}
-        args = args[:idx] + args[idx + 2:]
+        tag_filter = {t.strip() for t in args[idx + 1].split(",") if t.strip()}
+        args = args[:idx] + args[idx + 2 :]
 
     if len(args) < 2:
-        print(f'Usage: {sys.argv[0]} <spec-path> <output-dir> [--tags tag1,tag2,...]')
+        print(f"Usage: {sys.argv[0]} <spec-path> <output-dir> [--tags tag1,tag2,...]")
         sys.exit(1)
 
     generate(args[0], args[1], tag_filter)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
