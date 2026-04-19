@@ -120,13 +120,13 @@ def test_model_content():
 
 
 def test_runtime_base_path():
-    """Test that runtime.ts gets the correct BASE_PATH from spec servers."""
+    """Test that runtime.ts BASE_PATH is empty (callers configure via Configuration)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         generate(str(PETSTORE_SPEC), tmpdir)
 
         rt = Path(tmpdir) / 'runtime.ts'
         content = rt.read_text()
-        assert 'https://petstore.example.com/api' in content
+        assert 'export const BASE_PATH = ""' in content
 
         print('  [PASS] test_runtime_base_path')
 
