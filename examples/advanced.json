@@ -1,0 +1,239 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Advanced Test API",
+    "version": "2.0.0",
+    "description": "Exercises advanced OpenAPI features for generator testing."
+  },
+  "servers": [{ "url": "https://api.example.com/v2" }],
+  "paths": {
+    "/employees": {
+      "get": {
+        "operationId": "listEmployees",
+        "tags": ["employees"],
+        "summary": "List employees",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["active", "inactive", "on_leave"] }
+          },
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of employees",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Employee" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createEmployee",
+        "tags": ["employees"],
+        "summary": "Create an employee",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateEmployeeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Employee" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/employees/{employeeId}": {
+      "delete": {
+        "operationId": "deleteEmployee",
+        "tags": ["employees"],
+        "summary": "Delete an employee",
+        "parameters": [
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/departments": {
+      "get": {
+        "tags": ["departments"],
+        "summary": "List departments",
+        "responses": {
+          "200": {
+            "description": "List",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Department" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/summary": {
+      "get": {
+        "operationId": "getReportSummary",
+        "tags": ["reports"],
+        "summary": "Get report summary",
+        "responses": {
+          "200": {
+            "description": "Summary",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReportSummary" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Address": {
+        "type": "object",
+        "required": ["street", "city"],
+        "properties": {
+          "street": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "zip": { "type": "string" }
+        }
+      },
+      "Employee": {
+        "description": "An employee record",
+        "allOf": [
+          { "$ref": "#/components/schemas/PersonBase" },
+          {
+            "type": "object",
+            "required": ["employeeId", "department"],
+            "properties": {
+              "employeeId": { "type": "string" },
+              "department": { "type": "string" },
+              "address": { "$ref": "#/components/schemas/Address" },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              "tags": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        ]
+      },
+      "PersonBase": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": ["string", "null"] },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "manager", "staff"]
+          }
+        }
+      },
+      "CreateEmployeeRequest": {
+        "type": "object",
+        "required": ["name", "department"],
+        "properties": {
+          "name": { "type": "string" },
+          "department": { "type": "string" },
+          "address": { "$ref": "#/components/schemas/Address" },
+          "nickname": {
+            "type": ["string", "null"],
+            "description": "Optional nullable nickname"
+          }
+        }
+      },
+      "Department": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "head": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PersonBase" },
+              { "type": "null" }
+            ]
+          },
+          "budget": {
+            "anyOf": [
+              { "type": "number" },
+              { "type": "string" }
+            ]
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "value": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "ReportSummary": {
+        "type": "object",
+        "required": ["totalEmployees"],
+        "properties": {
+          "totalEmployees": { "type": "integer" },
+          "departments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "count": { "type": "integer" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
