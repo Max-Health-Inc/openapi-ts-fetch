@@ -44,7 +44,9 @@ required-version = ">=0.11"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-include = ["generate.py", "runtime-template.ts"]
+
+[tool.hatch.build]
+include = ["generate.py", "runtime-template.ts", "LICENSE", "README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
