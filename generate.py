@@ -31,9 +31,12 @@ from __future__ import annotations
 import json
 import re
 import sys
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+__version__ = "0.2.0"
 
 # ─── Naming helpers ──────────────────────────────────────────────────────────────
 
@@ -800,26 +803,78 @@ def _collect_model_deps(name: str, registry: SchemaRegistry, visited: set[str] |
     return visited
 
 
-def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None):
+def generate(
+    spec_path: str,
+    output_dir: str,
+    tag_filter: set[str] | None = None,
+    base_path_override: str | None = None,
+    dry_run: bool = False,
+):
     """Main entry: read spec, walk operations, generate files.
 
     If *tag_filter* is provided, only API classes whose tag (case-insensitive)
     is in the set are generated.  Models are pruned to those transitively
     referenced by the selected APIs.
     """
-    with open(spec_path, encoding="utf-8") as f:
+    # Load spec from URL or local file
+    if spec_path.startswith(("http://", "https://")):
+        print(f"[fetch] {spec_path}")
+        req = urllib.request.Request(spec_path, headers={"User-Agent": f"openapi-ts-fetch/{__version__}"})
+        with urllib.request.urlopen(req) as resp:  # noqa: S310
+            raw = resp.read().decode("utf-8")
         if spec_path.endswith((".yaml", ".yml")):
             import yaml
 
-            spec = yaml.safe_load(f)
+            spec = yaml.safe_load(raw)
         else:
-            spec = json.load(f)
+            spec = json.loads(raw)
+    else:
+        with open(spec_path, encoding="utf-8") as f:
+            if spec_path.endswith((".yaml", ".yml")):
+                import yaml
+
+                spec = yaml.safe_load(f)
+            else:
+                spec = json.load(f)
+
+    # Validate minimal spec structure
+    if not isinstance(spec, dict) or "openapi" not in spec:
+        print("[ERROR] Input does not look like a valid OpenAPI 3.x spec (missing 'openapi' key)")
+        sys.exit(1)
+    openapi_ver = spec["openapi"]
+    if not str(openapi_ver).startswith("3."):
+        print(f"[ERROR] Only OpenAPI 3.x is supported (found '{openapi_ver}')")
+        sys.exit(1)
+    if "paths" not in spec and "webhooks" not in spec:
+        print("[ERROR] Spec has no 'paths' or 'webhooks' — nothing to generate")
+        sys.exit(1)
 
     info = spec.get("info", {})
     title = info.get("title", "API")
     description = info.get("description", "")
     version = info.get("version", "0.0.0")
-    base_path = ""  # always empty — callers pass basePath via Configuration
+    base_path = base_path_override if base_path_override is not None else ""
+
+    # Dry-run: just validate and report what would be generated
+    if dry_run:
+        tags_in_spec: set[str] = set()
+        for _path, path_item in (spec.get("paths", {}) or {}).items():
+            if not isinstance(path_item, dict):
+                continue
+            for method in ("get", "post", "put", "patch", "delete", "head", "options"):
+                op = path_item.get(method)
+                if op and isinstance(op, dict):
+                    for t in op.get("tags", ["Default"]):
+                        tags_in_spec.add(t)
+        schema_count = len(spec.get("components", {}).get("schemas", {}))
+        print(f"[dry-run] {title} v{version} (OpenAPI {openapi_ver})")
+        print(f"[dry-run] Tags: {', '.join(sorted(tags_in_spec)) or 'none'}")
+        print(f"[dry-run] Schemas: {schema_count}")
+        if tag_filter:
+            missing = tag_filter - {t.lower() for t in tags_in_spec}
+            if missing:
+                print(f"[dry-run] WARNING: requested tags not in spec: {', '.join(sorted(missing))}")
+        return [], []
 
     header = HEADER_TPL.format(title=title, description=description, version=version)
     registry = SchemaRegistry(spec)
@@ -1019,23 +1074,26 @@ def generate(spec_path: str, output_dir: str, tag_filter: set[str] | None = None
 
 def main():
     """CLI entry point."""
-    args = sys.argv[1:]
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="openapi-ts-fetch",
+        description="Generate TypeScript fetch clients from OpenAPI 3.x specs.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("spec", help="Path or URL to OpenAPI 3.x JSON/YAML spec")
+    parser.add_argument("output", help="Output directory for generated client")
+    parser.add_argument("--tags", help="Comma-separated list of tags to generate (default: all)")
+    parser.add_argument("--base-path", help="Override BASE_PATH in runtime.ts (default: empty)")
+    parser.add_argument("--dry-run", action="store_true", help="Validate spec and report what would be generated")
+
+    args = parser.parse_args()
+
     tag_filter: set[str] | None = None
+    if args.tags:
+        tag_filter = {t.strip() for t in args.tags.split(",") if t.strip()}
 
-    # Parse --tags flag
-    if "--tags" in args:
-        idx = args.index("--tags")
-        if idx + 1 >= len(args):
-            print("Error: --tags requires a comma-separated list of tag names")
-            sys.exit(1)
-        tag_filter = {t.strip() for t in args[idx + 1].split(",") if t.strip()}
-        args = args[:idx] + args[idx + 2 :]
-
-    if len(args) < 2:
-        print(f"Usage: {sys.argv[0]} <spec-path> <output-dir> [--tags tag1,tag2,...]")
-        sys.exit(1)
-
-    generate(args[0], args[1], tag_filter)
+    generate(args.spec, args.output, tag_filter, args.base_path, args.dry_run)
 
 
 if __name__ == "__main__":

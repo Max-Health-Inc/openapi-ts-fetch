@@ -1,5 +1,10 @@
 # openapi-ts-fetch
 
+[![PyPI](https://img.shields.io/pypi/v/openapi-ts-fetch)](https://pypi.org/project/openapi-ts-fetch/)
+[![CI](https://github.com/Max-Health-Inc/openapi-ts-fetch/actions/workflows/ci.yml/badge.svg)](https://github.com/Max-Health-Inc/openapi-ts-fetch/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 Lightweight Python OpenAPI 3.x → TypeScript fetch client generator. **Zero Java, zero npm** — just Python 3.10+ and your OpenAPI spec.
 
 A fast, single-file alternative to the 200MB+ Java `openapi-generator-cli`. Generates fully typed TypeScript fetch clients with the same output structure.
@@ -7,34 +12,43 @@ A fast, single-file alternative to the 200MB+ Java `openapi-generator-cli`. Gene
 ## Features
 
 - **OpenAPI 3.0.3 & 3.1.x** — handles both spec versions natively
+- **Remote & local specs** — load from URLs or local JSON/YAML files
 - **Schema deduplication** — identical schemas share a single model via content-hash
 - **Nested extraction** — inline object properties and array items become named models
 - **Tag filtering** — generate only the APIs you need with `--tags`
+- **Dry-run mode** — validate spec and preview what would be generated
 - **No runtime dependencies** — pure Python stdlib, TypeScript output uses only `fetch`
 - **Drop-in compatible** — output matches the `openapi-generator` TypeScript-fetch structure
 
 ## Installation
 
 ```bash
-# Option 1: pip install (coming soon)
 pip install openapi-ts-fetch
 
-# Option 2: just copy the two files
-curl -O https://raw.githubusercontent.com/Max-Health-Inc/openapi-ts-fetch/main/generate.py
-curl -O https://raw.githubusercontent.com/Max-Health-Inc/openapi-ts-fetch/main/runtime-template.ts
+# Or with uv
+uv tool install openapi-ts-fetch
 ```
 
 ## Usage
 
 ```bash
-# Generate full client
-python generate.py openapi.json ./src/api-client
+# Generate full client from local spec
+openapi-ts-fetch openapi.json ./src/api-client
+
+# Generate from a remote URL
+openapi-ts-fetch https://petstore3.swagger.io/api/v3/openapi.json ./src/api-client
 
 # Generate only specific API tags (and their referenced models)
-python generate.py openapi.json ./src/api-client --tags users,orders
+openapi-ts-fetch openapi.json ./src/api-client --tags users,orders
 
-# From pip install
-openapi-ts-fetch openapi.json ./src/api-client --tags users
+# Override BASE_PATH in generated runtime.ts
+openapi-ts-fetch openapi.json ./src/api-client --base-path /api/v1
+
+# Validate spec without generating (dry-run)
+openapi-ts-fetch openapi.json ./src/api-client --dry-run
+
+# Check version
+openapi-ts-fetch --version
 ```
 
 ## Output Structure
@@ -76,7 +90,7 @@ When you only need a subset of your API in a particular app, use `--tags` to gen
 
 ```bash
 # Full API has 26 tags and 220 models, but your app only uses 'shl'
-python generate.py openapi.json ./src/api-client --tags shl
+openapi-ts-fetch openapi.json ./src/api-client --tags shl
 
 # Output: 1 API class, 3 models (only transitively referenced ones)
 ```

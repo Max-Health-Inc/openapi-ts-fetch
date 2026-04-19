@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openapi-ts-fetch"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight Python OpenAPI 3.x → TypeScript fetch client generator. Zero Java, zero npm."
 readme = "README.md"
 license = "MIT"

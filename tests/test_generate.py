@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Add repo root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from generate import generate
+from generate import __version__, generate
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 PETSTORE_SPEC = EXAMPLES_DIR / "petstore.json"
@@ -126,6 +126,61 @@ def test_runtime_base_path():
         assert 'export const BASE_PATH = ""' in content
 
         print("  [PASS] test_runtime_base_path")
+
+
+def test_base_path_override():
+    """Test that --base-path overrides the BASE_PATH in runtime.ts."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        generate(str(PETSTORE_SPEC), tmpdir, base_path_override="/api/v1")
+
+        rt = Path(tmpdir) / "runtime.ts"
+        content = rt.read_text()
+        assert 'export const BASE_PATH = "/api/v1"' in content
+
+        print("  [PASS] test_base_path_override")
+
+
+def test_dry_run():
+    """Test that dry-run mode does not write files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        models, apis = generate(str(PETSTORE_SPEC), tmpdir, dry_run=True)
+
+        # Should return empty lists
+        assert models == []
+        assert apis == []
+
+        # Output directory should be empty (no files generated)
+        out = Path(tmpdir)
+        assert not (out / "runtime.ts").exists()
+        assert not (out / "index.ts").exists()
+
+        print("  [PASS] test_dry_run")
+
+
+def test_version_string():
+    """Test that __version__ is a valid semver-like string."""
+    assert __version__
+    parts = __version__.split(".")
+    assert len(parts) >= 2
+    assert all(p.isdigit() for p in parts)
+
+    print("  [PASS] test_version_string")
+
+
+def test_invalid_spec():
+    """Test that an invalid spec (non-OpenAPI) raises SystemExit."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Write a non-OpenAPI JSON file
+        bad_spec = Path(tmpdir) / "bad.json"
+        bad_spec.write_text('{"not": "openapi"}')
+
+        try:
+            generate(str(bad_spec), tmpdir)
+            assert False, "Should have raised SystemExit"
+        except SystemExit as e:
+            assert e.code == 1
+
+        print("  [PASS] test_invalid_spec")
 
 
 if __name__ == "__main__":
