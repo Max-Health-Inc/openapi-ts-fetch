@@ -1,0 +1,184 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bugfix 0.2.1 Test API",
+    "version": "1.0.0",
+    "description": "Tests for: enum index, non-PascalCase model refs, duplicate op ID dedup."
+  },
+  "servers": [{ "url": "https://api.example.com" }],
+  "paths": {
+    "/history": {
+      "get": {
+        "operationId": "listHistory",
+        "tags": ["history"],
+        "summary": "List interaction history",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/InteractionSource" }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/InteractionKind" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HistoryResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stt": {
+      "post": {
+        "operationId": "transcribe_speech_api_stt__post",
+        "tags": ["stt"],
+        "summary": "Transcribe speech",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Body_transcribe_speech_api_stt__post",
+                "type": "object",
+                "required": ["audio"],
+                "properties": {
+                  "audio": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TranscribeResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/write": {
+      "put": {
+        "operationId": "writeFile",
+        "tags": ["filesystem"],
+        "summary": "Write file",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "api__filesystem__WriteFileRequest",
+                "type": "object",
+                "required": ["content"],
+                "properties": {
+                  "content": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "WriteFileResponse",
+                  "properties": {
+                    "path": { "type": "string" },
+                    "written": { "type": "boolean" }
+                  },
+                  "required": ["path", "written"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/beacon": {
+      "get": {
+        "operationId": "beacon_sink",
+        "tags": ["default"],
+        "summary": "Beacon GET",
+        "responses": {
+          "204": { "description": "No Content" }
+        }
+      },
+      "post": {
+        "operationId": "beacon_sink",
+        "tags": ["default"],
+        "summary": "Beacon POST",
+        "responses": {
+          "204": { "description": "No Content" }
+        }
+      },
+      "options": {
+        "operationId": "beacon_sink",
+        "tags": ["default"],
+        "summary": "Beacon OPTIONS",
+        "responses": {
+          "204": { "description": "No Content" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "InteractionSource": {
+        "type": "string",
+        "title": "InteractionSource",
+        "enum": ["chat", "planner", "skill_forge", "terminal", "voice"]
+      },
+      "InteractionKind": {
+        "type": "string",
+        "title": "InteractionKind",
+        "enum": ["chat_message", "tool_call", "skill_created", "error"]
+      },
+      "HistoryResponse": {
+        "type": "object",
+        "title": "HistoryResponse",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/HistoryEntry" }
+          },
+          "total": { "type": "integer" }
+        },
+        "required": ["items", "total"]
+      },
+      "HistoryEntry": {
+        "type": "object",
+        "title": "HistoryEntry",
+        "properties": {
+          "id": { "type": "string" },
+          "source": { "$ref": "#/components/schemas/InteractionSource" },
+          "kind": { "$ref": "#/components/schemas/InteractionKind" }
+        },
+        "required": ["id", "source", "kind"]
+      },
+      "TranscribeResponse": {
+        "type": "object",
+        "title": "TranscribeResponse",
+        "properties": {
+          "text": { "type": "string" }
+        },
+        "required": ["text"]
+      }
+    }
+  }
+}

@@ -36,7 +36,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # ─── Naming helpers ──────────────────────────────────────────────────────────────
 
@@ -346,13 +346,55 @@ class SchemaRegistry:
 def model_refs(ts_type: str, registry: SchemaRegistry, exclude: str = "") -> set[str]:
     """Find model names referenced in a TS type string."""
     refs: set[str] = set()
-    for word in re.findall(r"\b[A-Z][a-zA-Z0-9]+\b", ts_type):
+    # Match PascalCase names AND non-standard names (Body_*, api__* etc.)
+    for word in re.findall(r"\b[A-Za-z][A-Za-z0-9_]*\b", ts_type):
         if word in registry.models and word != exclude and word != "Array":
             refs.add(word)
     return refs
 
 
 # ─── Model file generator ────────────────────────────────────────────────────────
+
+
+def _gen_enum_model(name: str, schema: dict, header: str) -> str:
+    """Generate a standalone enum model .ts file (string union type)."""
+    values = schema.get("enum", [])
+    lines: list[str] = [header.rstrip(), ""]
+
+    # Type alias as string union
+    if values:
+        union = "\n  | ".join(f"'{v}'" for v in values)
+        lines.append(f"export type {name} = ")
+        lines.append(f"  | {union};")
+    else:
+        lines.append(f"export type {name} = string;")
+    lines.append("")
+
+    # instanceOf guard
+    vals_arr = ", ".join(f"'{v}'" for v in values)
+    lines.append(f"export function instanceOf{name}(value: any): value is {name} {{")
+    lines.append(f"    return [{vals_arr}].includes(value);")
+    lines.append("}")
+    lines.append("")
+
+    # FromJSON / ToJSON (identity for enums)
+    lines.append(f"export function {name}FromJSON(json: any): {name} {{")
+    lines.append(f"    return {name}FromJSONTyped(json, false);")
+    lines.append("}")
+    lines.append("")
+    lines.append(f"export function {name}FromJSONTyped(json: any, ignoreDiscriminator: boolean): {name} {{")
+    lines.append(f"    return json as {name};")
+    lines.append("}")
+    lines.append("")
+    lines.append(f"export function {name}ToJSON(value?: {name} | null): any {{")
+    lines.append("    return value as any;")
+    lines.append("}")
+    lines.append("")
+    lines.append(f"export function {name}ToJSONTyped(value?: {name} | null, ignoreDiscriminator: boolean = false): any {{")
+    lines.append("    return value as any;")
+    lines.append("}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def gen_model(name: str, schema: dict, registry: SchemaRegistry, header: str) -> str:
@@ -973,7 +1015,11 @@ def generate(
             }
             # Assign to first tag only (like Java generator) to avoid
             # duplicate request interface exports across API classes.
-            tag_ops[tags[0]].append(op_data)
+            # Deduplicate operations with the same ID within a tag
+            # (e.g. FastAPI api_route with multiple methods generates duplicates).
+            existing_ids = {o["id"] for o in tag_ops[tags[0]]}
+            if oid not in existing_ids:
+                tag_ops[tags[0]].append(op_data)
 
     # ── Tag filtering ────────────────────────────────────────────────────────
     if tag_filter:
@@ -1009,19 +1055,27 @@ def generate(
 
     # Models
     model_files: list[str] = []
+    enum_files: list[str] = []
     for name, schema in sorted(registry.models.items()):
-        if not schema.get("properties"):
-            continue
         if name not in all_needed:
+            continue
+        # Standalone enum schemas (no properties, just enum values)
+        if "enum" in schema and not schema.get("properties"):
+            content = _gen_enum_model(name, schema, header)
+            (models_dir / f"{name}.ts").write_text(content, encoding="utf-8")
+            enum_files.append(name)
+            print(f"   [ok] models/{name}.ts (enum)")
+            continue
+        if not schema.get("properties"):
             continue
         content = gen_model(name, schema, registry, header)
         (models_dir / f"{name}.ts").write_text(content, encoding="utf-8")
         model_files.append(name)
         print(f"   [ok] models/{name}.ts")
 
-    # Models index
+    # Models index (includes both object models and standalone enums)
     idx = "/* tslint:disable */\n/* eslint-disable */\n"
-    for n in sorted(model_files):
+    for n in sorted(model_files + enum_files):
         idx += f"export * from './{n}';\n"
     (models_dir / "index.ts").write_text(idx, encoding="utf-8")
 
