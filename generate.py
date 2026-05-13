@@ -122,14 +122,21 @@ class SchemaRegistry:
             self._register_direct(name, schema)
 
     def _canonical(self, schema: dict) -> str:
-        """Compute a canonical form of a schema for deduplication (ignores metadata)."""
+        """Compute a canonical form of a schema for deduplication (ignores metadata).
+
+        If the schema has an explicit 'title', it is preserved in the canonical
+        form so that semantically distinct schemas with identical structure but
+        different titles are never collapsed together.
+        """
+        # Metadata keys that are purely cosmetic (safe to strip for dedup)
+        _cosmetic = ("description", "example", "examples", "default", "x-examples", "externalDocs")
 
         def _strip(obj: Any) -> Any:
             if isinstance(obj, dict):
                 return {
                     k: _strip(v)
                     for k, v in sorted(obj.items())
-                    if k not in ("title", "description", "example", "examples", "default", "x-examples", "externalDocs")
+                    if k not in _cosmetic
                 }
             if isinstance(obj, list):
                 return [_strip(x) for x in obj]
