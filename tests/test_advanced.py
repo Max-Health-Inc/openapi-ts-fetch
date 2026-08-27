@@ -8,12 +8,10 @@ optional serialization, and error handling.
 """
 
 import json
-import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from generate import SchemaRegistry, generate, norm_type, operation_id
+from openapi_ts_fetch import SchemaRegistry, generate, norm_type, operation_id
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 ADVANCED_SPEC = EXAMPLES_DIR / "advanced.json"

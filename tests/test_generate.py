@@ -6,13 +6,10 @@ Generates a client from the petstore example and validates output structure.
 Run: python tests/test_generate.py
 """
 
-import sys
 import tempfile
 from pathlib import Path
 
-# Add repo root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from generate import __version__, generate
+from openapi_ts_fetch import __version__, generate
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 PETSTORE_SPEC = EXAMPLES_DIR / "petstore.json"
@@ -183,6 +180,21 @@ def test_invalid_spec():
         print("  [PASS] test_invalid_spec")
 
 
+def test_output_is_deterministic():
+    """Two runs over the same spec must produce byte-identical files."""
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        generate(str(PETSTORE_SPEC), a)
+        generate(str(PETSTORE_SPEC), b)
+
+        first = {p.relative_to(a): p.read_text(encoding="utf-8") for p in Path(a).rglob("*.ts")}
+        second = {p.relative_to(b): p.read_text(encoding="utf-8") for p in Path(b).rglob("*.ts")}
+
+        assert first.keys() == second.keys()
+        for rel, text in first.items():
+            assert text == second[rel], f"{rel} differs between runs"
+        print("  [PASS] test_output_is_deterministic")
+
+
 if __name__ == "__main__":
     print("Running openapi-ts-fetch tests...\n")
     test_full_generation()
@@ -190,4 +202,5 @@ if __name__ == "__main__":
     test_tag_filtering_owners_only()
     test_model_content()
     test_runtime_base_path()
+    test_output_is_deterministic()
     print("\nAll tests passed!")

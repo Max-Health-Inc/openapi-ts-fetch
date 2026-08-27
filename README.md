@@ -51,6 +51,18 @@ openapi-ts-fetch openapi.json ./src/api-client --dry-run
 openapi-ts-fetch --version
 ```
 
+### From Python
+
+```python
+from openapi_ts_fetch import generate
+
+model_files, api_files = generate("openapi.json", "./src/api-client", tag_filter={"shl"})
+```
+
+The package also exposes the pieces the generator is built from: `SchemaRegistry`
+(inline-schema extraction and dedup), `gen_model` and `gen_api` (the two
+emitters), and the naming helpers `pascal`, `camel` and `operation_id`.
+
 ## Output Structure
 
 ```

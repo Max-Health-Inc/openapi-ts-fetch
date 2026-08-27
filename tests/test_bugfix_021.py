@@ -7,12 +7,10 @@ Tests for v0.2.1 bugfixes:
 """
 
 import json
-import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from generate import SchemaRegistry, generate, model_refs
+from openapi_ts_fetch import SchemaRegistry, generate, model_refs
 
 SPEC_PATH = Path(__file__).parent.parent / "examples" / "bugfix_021.json"
 

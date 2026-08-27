@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openapi-ts-fetch"
-version = "0.2.2"
+version = "0.3.0"
 description = "Lightweight Python OpenAPI 3.x → TypeScript fetch client generator. Zero Java, zero npm."
 readme = "README.md"
 license = "MIT"
@@ -31,7 +31,7 @@ Repository = "https://github.com/Max-Health-Inc/openapi-ts-fetch"
 Issues = "https://github.com/Max-Health-Inc/openapi-ts-fetch/issues"
 
 [project.scripts]
-openapi-ts-fetch = "generate:main"
+openapi-ts-fetch = "openapi_ts_fetch.cli:main"
 
 [dependency-groups]
 dev = [
@@ -43,10 +43,10 @@ dev = [
 required-version = ">=0.11"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["openapi_ts_fetch"]
 
-[tool.hatch.build]
-include = ["generate.py", "runtime-template.ts", "LICENSE", "README.md"]
+[tool.hatch.build.targets.sdist]
+include = ["openapi_ts_fetch", "tests", "examples", "LICENSE", "README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
