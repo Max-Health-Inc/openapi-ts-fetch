@@ -36,7 +36,7 @@ openapi-ts-fetch = "generate:main"
 [dependency-groups]
 dev = [
     "pytest>=9.0",
-    "ruff>=0.15",
+    "ruff>=0.15,<0.16",
 ]
 
 [tool.uv]

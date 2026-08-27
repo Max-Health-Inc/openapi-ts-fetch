@@ -34,7 +34,7 @@ wheels = [
 
 [[package]]
 name = "openapi-ts-fetch"
-version = "0.2.0"
+version = "0.2.2"
 source = { editable = "." }
 
 [package.dev-dependencies]
@@ -48,7 +48,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=9.0" },
-    { name = "ruff", specifier = ">=0.15" },
+    { name = "ruff", specifier = ">=0.15,<0.16" },
 ]
 
 [[package]]

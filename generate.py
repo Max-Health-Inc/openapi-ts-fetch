@@ -133,11 +133,7 @@ class SchemaRegistry:
 
         def _strip(obj: Any) -> Any:
             if isinstance(obj, dict):
-                return {
-                    k: _strip(v)
-                    for k, v in sorted(obj.items())
-                    if k not in _cosmetic
-                }
+                return {k: _strip(v) for k, v in sorted(obj.items()) if k not in _cosmetic}
             if isinstance(obj, list):
                 return [_strip(x) for x in obj]
             return obj
@@ -397,7 +393,9 @@ def _gen_enum_model(name: str, schema: dict, header: str) -> str:
     lines.append("    return value as any;")
     lines.append("}")
     lines.append("")
-    lines.append(f"export function {name}ToJSONTyped(value?: {name} | null, ignoreDiscriminator: boolean = false): any {{")
+    lines.append(
+        f"export function {name}ToJSONTyped(value?: {name} | null, ignoreDiscriminator: boolean = false): any {{"
+    )
     lines.append("    return value as any;")
     lines.append("}")
     lines.append("")

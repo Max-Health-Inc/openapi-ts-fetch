@@ -83,7 +83,11 @@ class TestNonPascalCaseModelRefs:
         reg = SchemaRegistry(spec)
         # When the title has underscores, register_schema PascalCases it
         name = reg.register_schema(
-            {"type": "object", "properties": {"audio": {"type": "string"}}, "title": "Body_transcribe_speech_api_stt__post"},
+            {
+                "type": "object",
+                "properties": {"audio": {"type": "string"}},
+                "title": "Body_transcribe_speech_api_stt__post",
+            },
             "Body_transcribe_speech_api_stt__post",
         )
         # The registered name is PascalCased
@@ -95,7 +99,11 @@ class TestNonPascalCaseModelRefs:
         spec = _load_spec()
         reg = SchemaRegistry(spec)
         name = reg.register_schema(
-            {"type": "object", "properties": {"content": {"type": "string"}}, "title": "api__filesystem__WriteFileRequest"},
+            {
+                "type": "object",
+                "properties": {"content": {"type": "string"}},
+                "title": "api__filesystem__WriteFileRequest",
+            },
             "api__filesystem__WriteFileRequest",
         )
         assert name == "ApiFilesystemWriteFileRequest"
@@ -150,6 +158,9 @@ class TestDuplicateOperationIdDedup:
             default_api = (Path(tmpdir) / "apis" / "DefaultApi.ts").read_text()
             # A duplicate would have the same method signature appearing twice
             lines = default_api.split("\n")
-            method_sigs = [line.strip() for line in lines if line.strip().startswith("async ") and line.strip().endswith("{")]
-            assert len(method_sigs) == len(set(method_sigs)), \
+            method_sigs = [
+                line.strip() for line in lines if line.strip().startswith("async ") and line.strip().endswith("{")
+            ]
+            assert len(method_sigs) == len(set(method_sigs)), (
                 f"Duplicate method signatures found: {[s for s in method_sigs if method_sigs.count(s) > 1]}"
+            )
