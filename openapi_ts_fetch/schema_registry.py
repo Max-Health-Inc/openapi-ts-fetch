@@ -125,6 +125,17 @@ class SchemaRegistry:
         self._extract_nested(name, schema)
         return name
 
+    def _extract_inline(self, schema: dict, name: str):
+        """Register the object models inside a property schema, under the names ts_type gives them:
+        the object itself, array items with an "Inner" suffix, map values with "Value"."""
+        stype, _ = norm_type(schema)
+        if stype == "object" and schema.get("properties"):
+            self.register_schema(schema, name)
+        elif stype == "array" and isinstance(schema.get("items"), dict):
+            self._extract_inline(schema["items"], name + "Inner")
+        elif stype == "object" and isinstance(schema.get("additionalProperties"), dict):
+            self._extract_inline(schema["additionalProperties"], name + "Value")
+
     def _extract_nested(self, parent_name: str, schema: dict):
         """Recursively extract nested object/array schemas from properties."""
         sid = id(schema)
@@ -143,18 +154,7 @@ class SchemaRegistry:
 
                 child_name = parent_name + pascal(pname)
 
-                ptype, _ = norm_type(pschema)
-
-                # Object property with properties → extract as separate model
-                if ptype == "object" and pschema.get("properties"):
-                    self.register_schema(pschema, child_name)
-
-                # Array property with object items → extract with "Inner" suffix
-                elif ptype == "array":
-                    items = pschema.get("items", {})
-                    item_type, _ = norm_type(items) if isinstance(items, dict) else (None, False)
-                    if isinstance(items, dict) and item_type == "object" and items.get("properties"):
-                        self.register_schema(items, child_name + "Inner")
+                self._extract_inline(pschema, child_name)
 
                 # anyOf/oneOf with embedded objects
                 for keyword in ("anyOf", "oneOf"):

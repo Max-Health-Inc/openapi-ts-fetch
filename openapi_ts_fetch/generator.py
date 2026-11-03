@@ -257,25 +257,31 @@ def generate(
     else:
         all_needed = set(registry.models.keys())
 
-    # Models
+    # Models. Rendering one can register another (an inline schema met only while
+    # rendering), so write until nothing new appears; such a model is a dependency
+    # of the one that registered it, so it is needed even under a tag filter.
     model_files: list[str] = []
     enum_files: list[str] = []
-    for name, schema in sorted(registry.models.items()):
-        if name not in all_needed:
-            continue
+
+    def write_model(name: str, schema: dict) -> None:
         # Standalone enum schemas (no properties, just enum values)
         if "enum" in schema and not schema.get("properties"):
-            content = gen_enum_model(name, schema, header)
-            (models_dir / f"{name}.ts").write_text(content, encoding="utf-8")
+            (models_dir / f"{name}.ts").write_text(gen_enum_model(name, schema, header), encoding="utf-8")
             enum_files.append(name)
             print(f"   [ok] models/{name}.ts (enum)")
-            continue
+            return
         if not schema.get("properties"):
-            continue
-        content = gen_model(name, schema, registry, header)
-        (models_dir / f"{name}.ts").write_text(content, encoding="utf-8")
+            return
+        (models_dir / f"{name}.ts").write_text(gen_model(name, schema, registry, header), encoding="utf-8")
         model_files.append(name)
         print(f"   [ok] models/{name}.ts")
+
+    known = set(registry.models)
+    written: set[str] = set()
+    while pending := [n for n in sorted(registry.models) if n not in written and (n in all_needed or n not in known)]:
+        written.update(pending)
+        for name in pending:
+            write_model(name, registry.models[name])
 
     # Models index (includes both object models and standalone enums)
     idx = "/* tslint:disable */\n/* eslint-disable */\n"
